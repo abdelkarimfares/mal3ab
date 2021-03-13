@@ -12,9 +12,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\Str;
+
 
 
 class AccountRepository extends BaseRepository implements AccountRepositoryInterface
@@ -77,7 +76,7 @@ class AccountRepository extends BaseRepository implements AccountRepositoryInter
     public function create(array $attributes): ?Account
     {
         
-        $userRepository = new UserRepository(new User());
+        
 
         try {
 
@@ -88,14 +87,6 @@ class AccountRepository extends BaseRepository implements AccountRepositoryInter
             $attributes['package'] = self::PACKAGE_BASIC;
             $account = parent::create($attributes);
 
-            $userRepository->create([
-                'name' => $attributes['firstname'] . ' ' . $attributes['lastname'],
-                'email' => $account->email,
-                'account_id' => $account->id,
-                'status' => 1,
-                'password' => Hash::make(Str::random(10)),
-            ]);
-            
             DB::commit();
             
             return $account;

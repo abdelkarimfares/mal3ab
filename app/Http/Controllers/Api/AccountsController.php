@@ -7,17 +7,23 @@ use App\Http\Resources\AccountResource;
 use App\Http\Resources\ErrorResource;
 use App\Repository\AccountRepositoryInterface;
 use App\Repository\Error\ErrorRepository;
+use App\Repository\UserRepositoryInterface;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\ResourceCollection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 class AccountsController extends Controller
 {
     private $accountRepository;
+    private $userRepository;
     
-    public function __construct(AccountRepositoryInterface $accountRepository)
+    public function __construct(AccountRepositoryInterface $accountRepository, UserRepositoryInterface $userRepository)
     {
         $this->accountRepository = $accountRepository;
+        $this->userRepository = $userRepository;
     }
 
     /**
@@ -46,6 +52,8 @@ class AccountsController extends Controller
     public function create(Request $request)
     {
         $data = $request->all();
+        $response = [];
+
 
         if($this->accountRepository->validate($data) == false){
             $error = (new ErrorRepository)->fill([
@@ -59,7 +67,36 @@ class AccountsController extends Controller
 
         $account = $this->accountRepository->create($data);
 
-        return $account ? new AccountResource($account) : false;
+        if($account){
+            $response['account'] = new AccountResource($account);
+            
+            $user_password = Str::random(10);
+            
+            $user = $this->userRepository->create([
+                'name' => $data['firstname'] . ' ' . $data['lastname'],
+                'email' => $account->email,
+                'account_id' => $account->id,
+                'status' => 1,
+                'password' => Hash::make($user_password),
+                'email_verified_at' => now(),
+            ]);
+            
+            $credentials = [
+                'email' => $user->email,
+                'password' => $user_password,
+            ];
+
+            // Send Mail
+            $this->userRepository->sendUserCredentials($credentials, $account->email);
+
+            $response['credentials'] = $credentials;
+        }
+        else{
+            $response = false;
+        }
+
+
+        return $response;
     }
 
     /**
@@ -91,6 +128,25 @@ class AccountsController extends Controller
     */
     public function destroy($id)
     {
-        return $this->accountRepository->destroy($id);
+        try {
+            DB::beginTransaction();
+            $deleted = $this->accountRepository->destroy($id);
+
+            if($deleted){
+                $deleted = $this->userRepository->deleteUserByAccountId($id);
+            }
+
+            if(!$deleted ){
+                DB::rollBack();
+            }else{
+                DB::commit();
+            }
+
+            return $deleted;
+            
+        } catch (\Throwable $th) {
+            DB::rollBack();
+        }
+        return false;
     }
 }
